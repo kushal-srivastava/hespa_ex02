@@ -59,12 +59,12 @@ int main()
         cudaMemcpy(F_old,d_F_old,3*N*sizeof(double),cudaMemcpyHostToDevice);
 
 	//free device memory after simulation
-	cudaFree(x_d);
-	cudaFree(v_d);
-	cudaFree(F_d);
-	cudaFree(F_old_d);
-	cudaFree(a_d);
-	cudaFree(
+	cudaFree(d_x);
+	cudaFree(d_v);
+	cudaFree(d_a);
+	cudaFree(d_F_old);
+	cudaFree(d_F);
+	
 
 	return 0;
 }
