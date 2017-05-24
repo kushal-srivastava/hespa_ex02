@@ -1,7 +1,21 @@
 #include<iostream>
 #include<vector>
 #include<fstream>
+#include<math>
 
+__global__ void kern_Force(     double *epsilon,
+				double *sigma,
+				double *d_F_old,
+				double *d_F,
+				double *d_x){
+	////+++++++++++++++++++++++++++++++++++++++++
+	int x_index = threadIdx.x + blockIdx.x*blockDim.x;
+	int y_index = threadIdx.y + blockIdx.y*blockDim.y;
+	int z_index = threadIdx.z + blockIdx.z*blockDim.z;
+
+				
+
+}
 int main()
 {
 	//parameters to be read from the input file
@@ -47,7 +61,7 @@ int main()
 	cudaMemcpy(d_F_old,F_old,3*N*sizeof(double),cudaMemcpyHostToDevice);
 
 	//call kern_Force for calculating the force between particles
-
+	
 
 	//call kern_Vel_Verlet for updating the velocities
 	
