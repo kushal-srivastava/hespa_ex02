@@ -1,7 +1,7 @@
 #include<iostream>
 #include<vector>
 #include<fstream>
-#include<math>
+#include<math.h>
 
 __global__ void kern_Force(     double *epsilon,
 				double *sigma,
@@ -12,8 +12,18 @@ __global__ void kern_Force(     double *epsilon,
 	int x_index = threadIdx.x + blockIdx.x*blockDim.x;
 	int y_index = threadIdx.y + blockIdx.y*blockDim.y;
 	int z_index = threadIdx.z + blockIdx.z*blockDim.z;
-
-				
+	
+    for(k=0;k<N;++k){
+        for(i=0;i<N;++i)
+        {
+            
+            for(j=0;j<N;j++{
+                        
+                
+            }
+        
+        }
+    }
 
 }
 int main()
@@ -35,30 +45,36 @@ int main()
 	std::vector<double> F;
 	F.resize(3*N);
 	std::vector<double> F_old;
-
+	
 	//reading the data from the input file for test
 
 	//initializing pointers for cudaMalloc
-	double *d_x;
-	double *d_v;
-	double *d_a;
-	double *d_F;
-	double *d_F_old;
+	std::vector<double> d_x;
+	std::vector<double> d_v;
+	std::vector<double> d_a;
+	std::vector<double> d_F;
+	std::vector<double> d_F_old;
+	
 	
 	
 	//kernel for calculation of force
-	cudaMalloc((void**)&d_x, (3*N*sizeof(double)));
-	cudaMalloc((void**)&d_v, 3*N*sizeof(double));
-	cudaMalloc((void**)&d_a, 3*N*sizeof(double));
-	cudaMalloc((void**)&d_F, 3*N*sizeof(double));
-	cudaMalloc((void**)&d_F_old, 3*N*sizeof(double));
+	cudaMalloc((void**)&d_x, sizeof(std::vector<double>));
+	d_x.resize(N*3);
+	cudaMalloc((void**)&d_v, sizeof(std::vector<double>));
+	d_v.resize(N*3);
+	cudaMalloc((void**)&d_a, sizeof(std::vector<double>));
+	d_a.resize(N*3);
+	cudaMalloc((void**)&d_F, sizeof(std::vector<double>));
+	d_F.resize(3*N);
+	cudaMalloc((void**)&d_F_old, sizeof(std::vector<double>));
+	d_F_old.resize(3*N);
 
 	//memcopy from host to device
-	cudaMemcpy(d_x,x,3*N*sizeof(double),cudaMemcpyHostToDevice);
-	cudaMemcpy(d_a,a,3*N*sizeof(double),cudaMemcpyHostToDevice);
-	cudaMemcpy(d_v,v,3*N*sizeof(double),cudaMemcpyHostToDevice);
-	cudaMemcpy(d_F,F,3*N*sizeof(double),cudaMemcpyHostToDevice);
-	cudaMemcpy(d_F_old,F_old,3*N*sizeof(double),cudaMemcpyHostToDevice);
+	cudaMemcpy(d_x,x,3*N*sizeof(std::vector<double>),cudaMemcpyHostToDevice);
+	cudaMemcpy(d_a,a,3*N*sizeof(std::vector<double>),cudaMemcpyHostToDevice);
+	cudaMemcpy(d_v,v,3*N*sizeof(std::vector<double>),cudaMemcpyHostToDevice);
+	cudaMemcpy(d_F,F,3*N*sizeof(std::vector<double>),cudaMemcpyHostToDevice);
+	cudaMemcpy(d_F_old,F_old,3*N*sizeof(std::vector<double>),cudaMemcpyHostToDevice);
 
 	//call kern_Force for calculating the force between particles
 	
