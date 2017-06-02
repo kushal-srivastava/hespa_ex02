@@ -3,8 +3,9 @@
 #include<string>
 #include<cmath>
 #include<assert.h>
-#include "kernel.cu"
-using namespace std;
+#include<stdio.h>
+#include<cuda.h>
+//using namespace std;
 typedef double real;
 
 std::string part_input_file,part_out_name_base,vtk_out_name_base;
@@ -13,8 +14,151 @@ real timestep_length,time_end,epsilon,sigma;
 
 int part_out_freq,vtk_out_freq,cl_workgroup_1dsize;
 
-void fileread(std::string file);
+void checkError (cudaError_t err)
+{
+    if(err != cudaSuccess )
+    {
+        std::cout<< cudaGetErrorString(err) <<std::endl ;
+        exit(-1);
+    }
+}
+
+__host__ void fileread(std::string file);
 //void force_update(real* pos_x, real* pos_y, real* pos_z, real* F_x, real* F_y, real* F_z, real sigma, real epsilon, unsigned int N);
+////////////////////////////*************************************************************************************************************************************
+__global__ void Force_update_1D(
+		real *d_pos_x,
+		real *d_pos_y,
+		real *d_pos_z,
+		real *d_vel_x,
+		real *d_vel_y,
+		real *d_vel_z,
+		real *d_F_x,
+		real *d_F_y,
+		real *d_F_z,
+		real *d_F_old_x,
+		real *d_F_old_y,
+		real *d_F_old_z,
+		real sigma,
+		real epsilon,
+		unsigned int N)
+{
+
+
+	
+	
+    	real d = 0.0,
+            d_2 = 0.0,
+            x_i = 0.0,
+            y_i = 0.0,
+            dx,dy,dz,
+            z_i = 0.0,
+            c1 = 0.0,
+            t_pow = 0.0,
+            sig_abs = 0.0,
+            tempx = 0.0,
+            tempy = 0.0,
+            tempz = 0.0;
+	int id = threadIdx.x + blockIdx.x*blockDim.x;
+    	c1 = 24 * epsilon;
+    
+            x_i = d_pos_x[id];
+            y_i = d_pos_y[id];
+            z_i = d_pos_z[id];
+            
+            
+              for(auto j=0;j<N;++j){
+                            
+                            if(id != j)
+                            {
+                                
+                                d_2 = (x_i - d_pos_x[j]) * (x_i - d_pos_x[j]) + (y_i - d_pos_y[j])*(y_i - d_pos_y[j]) + (z_i - d_pos_z[j]) * (z_i - d_pos_z[j]);
+                                //d = (x_i - pos_x[j])  + (y_i - pos_y[j]) + (z_i - pos_z[j]);
+                                //std::cout<< i<<"\t" <<j<<"\t"<<"d: "<< d <<"\n"; 
+                                d = sqrt(d_2);
+                                //std::cout<< i<<"\t" <<j<<"\t"<<"d_2: "<< d_2 <<"\n"; 
+                                //abs_d = fabs(d);
+                                dx = x_i - d_pos_x[j];
+                                dy = y_i - d_pos_y[j];
+                                dz = z_i - d_pos_z[j];
+                                //std::cout<< i<<"\t" <<j<<"\t"<<"abs_d: "<< abs_d <<"\n"; 
+                                assert(d != 0);
+                                sig_abs = sigma/d;
+                                t_pow = pow(sig_abs,6);
+                                //std::cout<< i<<"\t" <<j<<"\t"<<"weird calc: "<< ((c1/(d_2) * t_pow * (2*t_pow - 1)) * d) <<"\t" << "c1: " << c1<<"\n"; 
+                                tempx = tempx + ((c1/(d_2) * t_pow * (2*t_pow - 1)) * dx); 
+                                tempy = tempy + ((c1/(d_2) * t_pow * (2*t_pow - 1)) * dy); 
+                                tempz = tempz + ((c1/(d_2) * t_pow * (2*t_pow - 1)) * dz); 
+                                //std::cout<< i<<"\t" <<j<<"\t"<<"temp: "<< temp <<"\n";
+                            }
+                                
+                                
+                   }
+               d_F_x[id] = tempx; 
+               d_F_y[id] = tempy; 
+               d_F_z[id] = tempz; 
+               //std::cout <<"updated F: " << i << "\t" << F[i]<<"\n";
+               /*tempx = 0;
+               tempy = 0;
+               tempz = 0;*/
+                            
+}
+
+
+__global__ void pos_update_1D(
+		real *d_pos_x,
+		real *d_pos_y,
+		real *d_pos_z,
+		real *d_vel_x,
+		real *d_vel_y,
+		real *d_vel_z,
+		real *d_F_x,
+		real *d_F_y,
+		real *d_F_z,
+		real *d_F_old_x,
+		real *d_F_old_y,
+		real *d_F_old_z,
+		real *mass,
+		real timestep_length){
+
+			int i = threadIdx.x + blockDim.x * blockIdx.x;
+		        real del_T = timestep_length*timestep_length;
+                            d_pos_x[i] = d_pos_x[i] + timestep_length * (d_vel_x[i]) + ((del_T/(2*mass[i])) * (d_F_x[i]));
+                            d_pos_y[i] = d_pos_y[i] + timestep_length * (d_vel_y[i]) + ((del_T/(2*mass[i])) * (d_F_y[i]));
+                            d_pos_z[i] = d_pos_z[i] + timestep_length * (d_vel_z[i]) + ((del_T/(2*mass[i])) * (d_F_z[i]));
+                            //std::cout << i <<"\t" << pos_x[i] << "\t" << pos_y[i] << "\t" << pos_z[i] <<"\n";
+                            d_F_old_x[i] = d_F_x[i];
+                            d_F_old_y[i] = d_F_y[i];
+                            d_F_old_z[i] = d_F_z[i];
+
+}
+__global__ void vel_update_1D(
+			real *d_vel_x,
+		real *d_vel_y,
+		real *d_vel_z,
+		real *d_F_x,
+		real *d_F_y,
+		real *d_F_z,
+		real *d_F_old_x,
+		real *d_F_old_y,
+		real *d_F_old_z,
+		real timestep_length,
+		real *mass){
+
+		int i = threadIdx.x + blockDim.x * blockIdx.x;
+		d_vel_x[i] = d_vel_x[i] + timestep_length * 0.5 * (d_F_x[i] + d_F_old_x[i])/mass[i];
+                d_vel_y[i] = d_vel_y[i] + timestep_length * 0.5 * (d_F_y[i] + d_F_old_y[i])/mass[i];
+                d_vel_z[i] = d_vel_z[i] + timestep_length * 0.5 * (d_F_z[i] + d_F_old_z[i])/mass[i];
+
+}
+
+
+
+
+
+
+
+////////////////////**********************************************************************************************************************************************
 int main(int argc,char *argv[])
 {
         std::cout.precision(4);
@@ -74,11 +218,7 @@ int main(int argc,char *argv[])
         //temp: for reduction of force
 	****************************************************/
         
-        real d = 0.0,
-            d_2 = 0.0,
-            abs_d = 0,
-            temp = 0,
-            t = 0;
+        real t = 0;
 
         int iter =0;
         while (true) {
@@ -94,7 +234,7 @@ int main(int argc,char *argv[])
         std::string vtk_file =" ";
         std::ofstream vtk;
 	//del_T: del T square
-        real del_T = timestep_length*timestep_length;
+
         
 
 	/*First force kernel cal using cuda*/
@@ -127,27 +267,34 @@ int main(int argc,char *argv[])
 	cudaMemcpy(d_F_old_y,F_old_y, (N*sizeof(real)),cudaMemcpyHostToDevice);
 	cudaMemcpy(d_F_old_z,F_old_z, (N*sizeof(real)),cudaMemcpyHostToDevice);
 
+	//real t = 0;
 
 
-	/*if(N<32)
-	{}
-	else
-	{}
-        force_update(pos_x,pos_y,pos_z,F_x, F_y, F_z,sigma,epsilon,N);*/
-	Force_update_1D<<<1,N>>>;
-            do
-            {
+	
+	
+
+
+	Force_update_1D<<<1,N>>>(d_pos_x, d_pos_y, d_pos_z, d_vel_x, d_vel_y, d_vel_z, d_F_x, d_F_y, d_F_z,d_F_old_x,d_F_old_y,d_F_old_z,sigma,epsilon,N);
+	cudaError_t errSync  = cudaGetLastError();
+	cudaError_t errAsync = cudaDeviceSynchronize();
+	if (errSync != cudaSuccess) 
+ 		 printf("Sync kernel error: %s\n", cudaGetErrorString(errSync));
+	if (errAsync != cudaSuccess)
+  	printf("Async kernel error: %s\n", cudaGetErrorString(errAsync));
+         do{
                 
                     //position update and parallely copy force to force_old
-                     pos_update_1D<<<1,N>>>;       
+                     pos_update_1D<<<1,N>>>(d_pos_x, d_pos_y, d_pos_z, d_vel_x, d_vel_y, d_vel_z, d_F_x, d_F_y, d_F_z,d_F_old_x,d_F_old_y,d_F_old_z,mass,timestep_length);       
 
 			
                     //Force update
                            //__syncAllThreads
-			Force_update_1D<<<1,N>>>;
+			Force_update_1D<<<1,N>>>(d_pos_x, d_pos_y, d_pos_z, d_vel_x, d_vel_y, d_vel_z, d_F_x, d_F_y, d_F_z,d_F_old_x,d_F_old_y,d_F_old_z,sigma,epsilon,N);
+			cudaDeviceSynchronize();
+			//__syncthreads();
                             //__synchAllThreads    
                     //calculate velocity 
-                      vel_update_1D<<<1,N>>>;      
+                      vel_update_1D<<<1,N>>>(d_vel_x, d_vel_y, d_vel_z, d_F_x, d_F_y, d_F_z,d_F_old_x,d_F_old_y,d_F_old_z,timestep_length,mass);      
                             
         cudaMemcpy(pos_x,d_pos_x, (N*sizeof(real)),cudaMemcpyDeviceToHost);
 	cudaMemcpy(pos_y,d_pos_y, (N*sizeof(real)),cudaMemcpyDeviceToHost);
@@ -200,7 +347,7 @@ int main(int argc,char *argv[])
         delete(F_old_x);
         delete(F_old_y);
         delete(F_old_z);
-delete(d_pos_x);
+	/*delete(d_pos_x);
         delete(d_pos_y);
         delete(d_pos_z);
         delete(d_vel_x);
@@ -211,7 +358,7 @@ delete(d_pos_x);
         delete(d_F_z);
         delete(d_F_old_x);
         delete(d_F_old_y);
-        delete(d_F_old_z);
+        delete(d_F_old_z);*/
 
 
         return 0;
@@ -273,75 +420,4 @@ void fileread(std::string file){
         }
     }
     ff.close();
-}
-
-void force_update(real* pos_x, real* pos_y, real* pos_z, real* F_x, real* F_y, real* F_z, real sigma, real epsilon, unsigned int N)
-{
-    real d = 0.0,
-            d_2 = 0.0,
-            abs_d = 0.0,
-            x_i = 0.0,
-            y_i = 0.0,
-            dx,dy,dz,
-            z_i = 0.0,
-            c1 = 0.0,
-            t_pow = 0.0,
-            sig_abs = 0.0,
-            tempx = 0.0,
-            tempy = 0.0,
-            tempz = 0.0;
-    c1 = 24 * epsilon;
-    //calculating force
-    // index: particle index
-	unsigned int i_x,
-			i_y,
-			i_z;
-	i_x = threadIdx.x + (blockIdx.x * blockDim.x);
-	i_y = threadIdx.y + (blockIdx.y * blockDim.y);
-	i_z = threadIdx.z + (blockIdx.z * blockDim.z);
-    
-        for(auto i = 0;i<N;++i)
-        {
-            x_i = pos_x[i];
-            y_i = pos_y[i];
-            z_i = pos_z[i];
-            
-            
-              for(auto j=0;j<N;++j){
-                            
-                            if(i != j)
-                            {
-                                
-                                d_2 = (x_i - pos_x[j]) * (x_i - pos_x[j]) + (y_i - pos_y[j])*(y_i - pos_y[j]) + (z_i - pos_z[j]) * (z_i - pos_z[j]);
-                                //d = (x_i - pos_x[j])  + (y_i - pos_y[j]) + (z_i - pos_z[j]);
-                                //std::cout<< i<<"\t" <<j<<"\t"<<"d: "<< d <<"\n"; 
-                                d = sqrt(d_2);
-                                //std::cout<< i<<"\t" <<j<<"\t"<<"d_2: "<< d_2 <<"\n"; 
-                                //abs_d = fabs(d);
-                                dx = x_i - pos_x[j];
-                                dy = y_i - pos_y[j];
-                                dz = z_i - pos_z[j];
-                                //std::cout<< i<<"\t" <<j<<"\t"<<"abs_d: "<< abs_d <<"\n"; 
-                                assert(d != 0);
-                                sig_abs = sigma/d;
-                                t_pow = pow(sig_abs,6);
-                                //std::cout<< i<<"\t" <<j<<"\t"<<"weird calc: "<< ((c1/(d_2) * t_pow * (2*t_pow - 1)) * d) <<"\t" << "c1: " << c1<<"\n"; 
-                                tempx = tempx + ((c1/(d_2) * t_pow * (2*t_pow - 1)) * dx); 
-                                tempy = tempy + ((c1/(d_2) * t_pow * (2*t_pow - 1)) * dy); 
-                                tempz = tempz + ((c1/(d_2) * t_pow * (2*t_pow - 1)) * dz); 
-                                //std::cout<< i<<"\t" <<j<<"\t"<<"temp: "<< temp <<"\n";
-                            }
-                                
-                                
-                    }
-               F_x[i] = tempx; 
-               F_y[i] = tempy; 
-               F_z[i] = tempz; 
-               //std::cout <<"updated F: " << i << "\t" << F[i]<<"\n";
-               tempx = 0;
-               tempy = 0;
-               tempz = 0;
-        }
-        
-    
 }
