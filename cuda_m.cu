@@ -5,7 +5,16 @@
 #include<assert.h>
 #include<stdio.h>
 #include<cuda.h>
+#include<sys/time.h>
 //using namespace std;
+
+double getSeconds()
+{
+	struct timeval tp;
+	gettimeofday(&tp, NULL);
+	return ((double)tp.tv_sec + (double)tp.tv_usec * 1e-6);
+}
+
 typedef double real;
 
 std::string part_input_file,part_out_name_base,vtk_out_name_base;
@@ -59,8 +68,11 @@ __global__ void Force_update_1D(
             tempx = 0.0,
             tempy = 0.0,
             tempz = 0.0;
+            
+            
 	int id = threadIdx.x + blockIdx.x*blockDim.x;
-    	c1 = 24 * epsilon;
+    
+    c1 = 24 * epsilon;
     
             x_i = d_pos_x[id];
             y_i = d_pos_y[id];
@@ -73,15 +85,10 @@ __global__ void Force_update_1D(
                             {
                                 
                                 d_2 = (x_i - d_pos_x[j]) * (x_i - d_pos_x[j]) + (y_i - d_pos_y[j])*(y_i - d_pos_y[j]) + (z_i - d_pos_z[j]) * (z_i - d_pos_z[j]);
-                                //d = (x_i - pos_x[j])  + (y_i - pos_y[j]) + (z_i - pos_z[j]);
-                                //std::cout<< i<<"\t" <<j<<"\t"<<"d: "<< d <<"\n"; 
                                 d = sqrt(d_2);
-                                //std::cout<< i<<"\t" <<j<<"\t"<<"d_2: "<< d_2 <<"\n"; 
-                                //abs_d = fabs(d);
                                 dx = x_i - d_pos_x[j];
                                 dy = y_i - d_pos_y[j];
                                 dz = z_i - d_pos_z[j];
-                                //std::cout<< i<<"\t" <<j<<"\t"<<"abs_d: "<< abs_d <<"\n"; 
                                 assert(d != 0);
                                 sig_abs = sigma/d;
                                 t_pow = pow(sig_abs,6);
@@ -89,18 +96,16 @@ __global__ void Force_update_1D(
                                 tempx = tempx + ((c1/(d_2) * t_pow * (2*t_pow - 1)) * dx); 
                                 tempy = tempy + ((c1/(d_2) * t_pow * (2*t_pow - 1)) * dy); 
                                 tempz = tempz + ((c1/(d_2) * t_pow * (2*t_pow - 1)) * dz); 
-                                //std::cout<< i<<"\t" <<j<<"\t"<<"temp: "<< temp <<"\n";
+                                //std::cout<< id<<"\t" <<j<<"\t"<<"temp: "<< temp <<"\n";
                             }
                                 
                                 
                    }
+            
                d_F_x[id] = tempx; 
                d_F_y[id] = tempy; 
                d_F_z[id] = tempz; 
-               //std::cout <<"updated F: " << i << "\t" << F[i]<<"\n";
-               /*tempx = 0;
-               tempy = 0;
-               tempz = 0;*/
+              
                             
 }
 
@@ -122,7 +127,9 @@ __global__ void pos_update_1D(
 		real timestep_length){
 
 			int i = threadIdx.x + blockDim.x * blockIdx.x;
+                //printf("%d\n",i);
 		        real del_T = timestep_length*timestep_length;
+                //printf("%f\t%f\t%f\n",mass[i],d_vel_x[i],d_F_x[i]);
                             d_pos_x[i] = d_pos_x[i] + timestep_length * (d_vel_x[i]) + ((del_T/(2*mass[i])) * (d_F_x[i]));
                             d_pos_y[i] = d_pos_y[i] + timestep_length * (d_vel_y[i]) + ((del_T/(2*mass[i])) * (d_F_y[i]));
                             d_pos_z[i] = d_pos_z[i] + timestep_length * (d_vel_z[i]) + ((del_T/(2*mass[i])) * (d_F_z[i]));
@@ -151,7 +158,11 @@ __global__ void vel_update_1D(
                 d_vel_z[i] = d_vel_z[i] + timestep_length * 0.5 * (d_F_z[i] + d_F_old_z[i])/mass[i];
 
 }
-
+ __global__ void print(real *d_pos_x, unsigned int N){
+    
+        int i = threadIdx.x;
+            printf("%f\n",d_pos_x[i]);
+}
 
 
 
@@ -170,6 +181,7 @@ int main(int argc,char *argv[])
         }
         para_file = argv[1];
         //std::cout<< para_file<< " " << argc << std::endl; //parameter file name
+        double wcTimeStart= 0.0, wcTimeEnd=0.0;
 
         fileread(para_file); //rad parameter file
 
@@ -183,20 +195,20 @@ int main(int argc,char *argv[])
         //std::cout<< "Number of particles: " << N << std::endl;
 
         real *mass  = new real[N];
-	//real *d_mass;
+	real *d_mass;
         real *pos_x = new real[N];
-	real *d_pos_x;
+	    real *d_pos_x;
         real *pos_y = new real[N];
-	real *d_pos_y;
+        real *d_pos_y;
         real *pos_z = new real[N];
-	real *d_pos_z;
+	    real *d_pos_z;
         real *vel_x = new real[N];
-	real *d_vel_x;
+	    real *d_vel_x;
         real *vel_y = new real[N];
-	real *d_vel_y;
+	    real *d_vel_y;
         real *vel_z = new real[N];
-	real *d_vel_z;
-                
+        real *d_vel_z;
+               
         real *F_x = new real[N];
         real *d_F_x;
         real *F_y = new real[N];
@@ -204,13 +216,28 @@ int main(int argc,char *argv[])
         real *F_z = new real[N];
         real *d_F_z;
         real *F_old_x = new real[N];
-	real *d_F_old_x;
+        real *d_F_old_x;
         real *F_old_y = new real[N];
-	real *d_F_old_y;
+        real *d_F_old_y;
         real *F_old_z = new real[N];
-	real *d_F_old_z;
+        real *d_F_old_z;
         int count = 0;
-
+//***************************************
+        //Cuda memory assignment:
+	cudaMalloc((void**)&d_mass, N*sizeof(real));
+        cudaMalloc((void**)&d_pos_x, N*sizeof(real));
+	cudaMalloc((void**)&d_pos_y, N*sizeof(real));
+	cudaMalloc((void**)&d_pos_z, N*sizeof(real));
+	cudaMalloc((void**)&d_vel_x, N*sizeof(real));
+	cudaMalloc((void**)&d_vel_y, N*sizeof(real));
+	cudaMalloc((void**)&d_vel_z, N*sizeof(real));
+	cudaMalloc((void**)&d_F_x, N*sizeof(real));
+	cudaMalloc((void**)&d_F_y, N*sizeof(real));
+	cudaMalloc((void**)&d_F_z, N*sizeof(real));
+	cudaMalloc((void**)&d_F_old_x, N*sizeof(real));
+	cudaMalloc((void**)&d_F_old_y, N*sizeof(real));
+	cudaMalloc((void**)&d_F_old_z, N*sizeof(real));
+//***************************************
         /*d: particle distance between ith and jth particle
         //d_2: sqare of d.
         //abs_d_x: absolute of (d_x)
@@ -224,7 +251,7 @@ int main(int argc,char *argv[])
         while (true) {
             f >> mass[iter] >> pos_x[iter] >> pos_y[iter]>> pos_z[iter] >> vel_x[iter] >> vel_y[iter] >> vel_z[iter];
             if( f.eof() ) break;
-            //std::cout<< mass[i] << " " <<  pos_x[i] <<" "<< pos_y[i] << " " << pos_z[i] << " " << vel_x[i] << " " << vel_y[i] <<" " << vel_z[i]<< std::endl;
+            //std::cout<< mass[iter] << " " <<  pos_x[iter] <<" "<< pos_y[iter] << " " << pos_z[iter] << " " << vel_x[iter] << " " << vel_y[iter] <<" " << vel_z[iter]<< std::endl;
             ++iter;
         }
         f.close();
@@ -239,22 +266,11 @@ int main(int argc,char *argv[])
 
 	/*First force kernel cal using cuda*/
 
-	//Cuda memory assignment:
-	cudaMalloc((void**)&d_pos_x, N*sizeof(real));
-	cudaMalloc((void**)&d_pos_y, N*sizeof(real));
-	cudaMalloc((void**)&d_pos_z, N*sizeof(real));
-	cudaMalloc((void**)&d_vel_x, N*sizeof(real));
-	cudaMalloc((void**)&d_vel_y, N*sizeof(real));
-	cudaMalloc((void**)&d_vel_z, N*sizeof(real));
-	cudaMalloc((void**)&d_F_x, N*sizeof(real));
-	cudaMalloc((void**)&d_F_y, N*sizeof(real));
-	cudaMalloc((void**)&d_F_z, N*sizeof(real));
-	cudaMalloc((void**)&d_F_old_x, N*sizeof(real));
-	cudaMalloc((void**)&d_F_old_y, N*sizeof(real));
-	cudaMalloc((void**)&d_F_old_z, N*sizeof(real));
+	
 
 	/**********Memcpy for initiaized variables ******************/
-	cudaMemcpy(d_pos_x,pos_x, (N*sizeof(real)),cudaMemcpyHostToDevice);
+cudaMemcpy(d_mass,mass, (N*sizeof(real)),cudaMemcpyHostToDevice);
+    cudaMemcpy(d_pos_x,pos_x, (N*sizeof(real)),cudaMemcpyHostToDevice);
 	cudaMemcpy(d_pos_y,pos_y, (N*sizeof(real)),cudaMemcpyHostToDevice);
 	cudaMemcpy(d_pos_z,pos_z, (N*sizeof(real)),cudaMemcpyHostToDevice);
 	cudaMemcpy(d_vel_x,vel_x, (N*sizeof(real)),cudaMemcpyHostToDevice);
@@ -269,23 +285,29 @@ int main(int argc,char *argv[])
 
 	//real t = 0;
 
-
+    //std::cout<<d_pos_x[0]<<std::endl;
 	
-	
+	//print<<<1,N>>>(d_vel_z,N);
 
-
+    wcTimeStart = getSeconds(); //Start time
 	Force_update_1D<<<1,N>>>(d_pos_x, d_pos_y, d_pos_z, d_vel_x, d_vel_y, d_vel_z, d_F_x, d_F_y, d_F_z,d_F_old_x,d_F_old_y,d_F_old_z,sigma,epsilon,N);
+    
 	cudaError_t errSync  = cudaGetLastError();
 	cudaError_t errAsync = cudaDeviceSynchronize();
 	if (errSync != cudaSuccess) 
  		 printf("Sync kernel error: %s\n", cudaGetErrorString(errSync));
 	if (errAsync != cudaSuccess)
   	printf("Async kernel error: %s\n", cudaGetErrorString(errAsync));
+    
+    
+    cudaDeviceSynchronize();
+    //std::cout<<"kernel op after force update"<<std::endl;
+    //print<<<1,N>>>(d_F_x,N);
          do{
-                
+                //std::cout<<"into the do loop"<<std::endl;
                     //position update and parallely copy force to force_old
-                     pos_update_1D<<<1,N>>>(d_pos_x, d_pos_y, d_pos_z, d_vel_x, d_vel_y, d_vel_z, d_F_x, d_F_y, d_F_z,d_F_old_x,d_F_old_y,d_F_old_z,mass,timestep_length);       
-
+                     pos_update_1D<<<1,N>>>(d_pos_x, d_pos_y, d_pos_z, d_vel_x, d_vel_y, d_vel_z, d_F_x, d_F_y, d_F_z,d_F_old_x,d_F_old_y,d_F_old_z,d_mass,timestep_length);       
+                    
 			
                     //Force update
                            //__syncAllThreads
@@ -294,7 +316,7 @@ int main(int argc,char *argv[])
 			//__syncthreads();
                             //__synchAllThreads    
                     //calculate velocity 
-                      vel_update_1D<<<1,N>>>(d_vel_x, d_vel_y, d_vel_z, d_F_x, d_F_y, d_F_z,d_F_old_x,d_F_old_y,d_F_old_z,timestep_length,mass);      
+                      vel_update_1D<<<1,N>>>(d_vel_x, d_vel_y, d_vel_z, d_F_x, d_F_y, d_F_z,d_F_old_x,d_F_old_y,d_F_old_z,timestep_length,d_mass);      
                             
         cudaMemcpy(pos_x,d_pos_x, (N*sizeof(real)),cudaMemcpyDeviceToHost);
 	cudaMemcpy(pos_y,d_pos_y, (N*sizeof(real)),cudaMemcpyDeviceToHost);
@@ -308,13 +330,13 @@ int main(int argc,char *argv[])
                         vtk_file  = "tmp/" + vtk_out_name_base + std::to_string(count) +".vtk";
                 //        std::cout << vtk_file << std::endl;
                         vtk.open(vtk_file);
-                        vtk << "# vtk DataFile Version 4.0" << "\n" << "hesp visualization file" << "\n" << "ASCII" << "\n" << "DATASET UNSTRUCTURED_GRID" << "\n" << "POINTS 2 double" << "\n";
+                        vtk << "# vtk DataFile Version 4.0" << "\n" << "hesp visualization file" << "\n" << "ASCII" << "\n" << "DATASET UNSTRUCTURED_GRID" << "\n" << "POINTS "<<N<<" double" << "\n";
                         vtk<< std::fixed;
                         for(int j =0; j<N; ++j)
                             vtk<<pos_x[j] << " "<< pos_y[j]<< " " << pos_z[j] << "\n";
                         vtk << "CELLS 0 0" << "\n";
                         vtk << "CELL_TYPES 0" << "\n";
-                        vtk << "POINT_DATA 2" << "\n";
+                        vtk << "POINT_DATA "<< N<< "\n";
                         vtk << "SCALARS m double" << "\n";
                         vtk << "LOOKUP_TABLE default" << "\n";
                         vtk<< std::fixed;
@@ -332,8 +354,9 @@ int main(int argc,char *argv[])
                             count++;
                             t = t + 0.01;
             }while(t<time_end);
-                        
-
+        wcTimeEnd = getSeconds(); //End time
+        std::cout << "Time Taken for computation: " << wcTimeEnd-wcTimeStart << " sec" << std::endl;              
+        
         delete(mass);
         delete(pos_x);
         delete(pos_y);
@@ -347,19 +370,19 @@ int main(int argc,char *argv[])
         delete(F_old_x);
         delete(F_old_y);
         delete(F_old_z);
-	/*delete(d_pos_x);
-        delete(d_pos_y);
-        delete(d_pos_z);
-        delete(d_vel_x);
-        delete(d_vel_y);
-        delete(d_vel_z);
-        delete(d_F_x);
-        delete(d_F_y);
-        delete(d_F_z);
-        delete(d_F_old_x);
-        delete(d_F_old_y);
-        delete(d_F_old_z);*/
-
+	
+        cudaFree(d_pos_x);
+        cudaFree(d_pos_y);
+        cudaFree(d_pos_z);
+        cudaFree(d_vel_x);
+        cudaFree(d_vel_y);
+        cudaFree(d_vel_z);
+        cudaFree(d_F_x);
+        cudaFree(d_F_y);
+        cudaFree(d_F_z);
+        cudaFree(d_F_old_x);
+        cudaFree(d_F_old_y);
+        cudaFree(d_F_old_z);
 
         return 0;
 }

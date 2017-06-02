@@ -1,0 +1,10 @@
+1. To compile, make CUDA.
+2. A tmp folder is created before compiling. All vtk files are stored in this location.
+3. There are 4 scenarios that have been provided for test. Respective .par and .in files are already included in the package.
+4  To run stable: make run1
+5  To run repell: make run2
+6. To run attract: make run3
+7. To run block: make run4
+8. To clean. make clean. executable hespa is deleted. and tmp folder is deleted.
+9. To run ./hespa parafile.par
+10. Make sure the folder tmp is created before running again. 

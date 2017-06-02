@@ -118,13 +118,13 @@ int main(int argc,char *argv[])
                         vtk_file  = "tmp/" + vtk_out_name_base + std::to_string(count) +".vtk";
                 //        std::cout << vtk_file << std::endl;
                         vtk.open(vtk_file);
-                        vtk << "# vtk DataFile Version 4.0" << "\n" << "hesp visualization file" << "\n" << "ASCII" << "\n" << "DATASET UNSTRUCTURED_GRID" << "\n" << "POINTS 2 double" << "\n";
+                        vtk << "# vtk DataFile Version 4.0" << "\n" << "hesp visualization file" << "\n" << "ASCII" << "\n" << "DATASET UNSTRUCTURED_GRID" << "\n" << "POINTS "<<N<<" double" << "\n";
                         vtk<< std::fixed;
                         for(int j =0; j<N; ++j)
                             vtk<<pos_x[j] << " "<< pos_y[j]<< " " << pos_z[j] << "\n";
                         vtk << "CELLS 0 0" << "\n";
                         vtk << "CELL_TYPES 0" << "\n";
-                        vtk << "POINT_DATA 2" << "\n";
+                        vtk << "POINT_DATA "<<N << "\n";
                         vtk << "SCALARS m double" << "\n";
                         vtk << "LOOKUP_TABLE default" << "\n";
                         vtk<< std::fixed;
@@ -276,7 +276,7 @@ void force_update(real* pos_x, real* pos_y, real* pos_z, real* F_x, real* F_y, r
                F_x[i] = tempx; 
                F_y[i] = tempy; 
                F_z[i] = tempz; 
-               //std::cout <<"updated F: " << i << "\t" << F[i]<<"\n";
+               //std::cout <<tempx<<"\t"<<tempy<<"\t"<<tempz<<std::endl;// << i << "\t" << F[i]<<"\n";
                tempx = 0;
                tempy = 0;
                tempz = 0;
